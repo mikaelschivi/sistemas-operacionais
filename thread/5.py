@@ -72,8 +72,8 @@ def get_content_stats(path, data):
     }
 
 if __name__ == "__main__":
-    input_dir = input("Nome do diretorio de texto:")
-    # input_dir = "data"
+    # input_dir = input("Nome do diretorio de texto:")
+    input_dir = "data"
     if not os.path.exists(input_dir):
         print(f"O arquivo `{input_dir}` não existe no diretório base.")
         exit()
