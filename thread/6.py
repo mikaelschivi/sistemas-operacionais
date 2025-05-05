@@ -35,7 +35,7 @@ def grayscale(image_array, num_threads=4):
 if __name__ == "__main__":
     n = input("nome da imagem para transfomar (ou nenhuma pra usar imagem pre-definida):")
     if not n:
-        img = Image.open('thread/image.jpg')
+        img = Image.open('image.jpg') # input de test
         print("imagem selecionada: image.jpg")
     else:
         img = Image.open(n)
