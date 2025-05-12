@@ -15,11 +15,12 @@ if __name__ == "__main__":
         print(f"waiting child {c}")
         x = os.waitpid(c, 0)
         print(f"child {x[0]} end")
+
     else:
         print(f"\nim child")
         sleep(0.5)
         
-        d = int(input("select matrix dimension: "))
+        d = int(input("select vector dimension N: "))
         
         n1 = []
         n2 = []
@@ -33,5 +34,7 @@ if __name__ == "__main__":
         for i in range(d):
             prod.append(n1[i] * n2[i])
         print(f"result: {prod}")
+
+        print(f"child finished\n")
         
         sleep(0.5)
