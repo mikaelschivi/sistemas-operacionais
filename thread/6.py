@@ -1,7 +1,6 @@
 import threading
 from PIL import Image
 import numpy as np
-# import timeit
 
 def grayscale(image_array, num_threads=4):
     height, width, _ = image_array.shape
@@ -45,3 +44,4 @@ if __name__ == "__main__":
 
     r = grayscale(image_arr, 6)
     Image.fromarray(r).save("grayscale.jpg")
+    print("imagem modificada salva como: grayscale.jpg")
