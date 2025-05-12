@@ -10,7 +10,7 @@ def get_txt_files(path):
     print("arquivos do diretorio:", files)
     for f in files:
         fm = f.split(".")
-        if fm[1] == "txt":
+        if len(fm) > 1 and fm[1] == "txt" and "upper" not in f: # ignora arquivos sem extensao, que não txt e que não contem upper no nome
             txt_files.append(os.path.join(path, f))
     print(f"arquivos texto: {txt_files}")
     return txt_files
@@ -55,7 +55,8 @@ def get_content_stats(path, data):
 
     dir_path = os.path.dirname(path)
     filename = os.path.basename(path)
-    upper_filename = f"{filename}"
+    name, ext = os.path.splitext(filename)
+    upper_filename = f"{name}_upper{ext}"
     upper_path = os.path.join(dir_path, upper_filename)
 
     with open(upper_path, "w", encoding="utf-8") as f_upper:
@@ -72,12 +73,15 @@ def get_content_stats(path, data):
     }
 
 if __name__ == "__main__":
-    # input_dir = input("Nome do diretorio de texto:")
-    input_dir = "data"
+    input_dir = input("Nome do diretorio de texto (ou nenhum para usar o default): ")
+    if not input_dir:
+        input_dir = "data"
+
     if not os.path.exists(input_dir):
-        print(f"O arquivo `{input_dir}` não existe no diretório base.")
+        print(f"O diretório `{input_dir}` não existe.")
         exit()
-    
+    print(f"\nutilizando o diretório `{input_dir}`\n")
+
     txt_list = get_txt_files(input_dir)
 
     threads = []
