@@ -27,12 +27,12 @@ if __name__ == '__main__':
 
     threads = []
     lock = threading.Lock()
-    cols_per_thread = M // T
+    thread_range = M // T
     extra = M % T
     start = 0
 
     for thread_id in range(T):
-        end = start + cols_per_thread + (1 if thread_id < extra else 0)
+        end = start + thread_range + (1 if thread_id < extra else 0)
         t = threading.Thread(target=transpose_section,
                              args=(a, b, start, end, thread_id, lock))
         threads.append(t)
