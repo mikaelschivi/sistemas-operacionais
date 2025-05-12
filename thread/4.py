@@ -9,7 +9,7 @@ def matrix_multiply_section(a, b, r, start_row, end_row, thread_id, lock):
             r[i][j] = sum(a[i][k] * b[k][j] for k in range(len(b)))
 
     with lock:
-        print(f"\nTHREAD {thread_id + 1} calculated rows {start_row} to {end_row - 1}")
+        print(f"\nTHREAD {thread_id + 1} -> calculou linhas {start_row} até {end_row - 1}")
 
 def print_matrix(matrix, level=2):
     for row in matrix:

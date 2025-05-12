@@ -7,16 +7,17 @@ def grayscale(image_array, num_threads=4):
     img = np.zeros((height, width, 3), dtype=image_array.dtype)
 
     def process_rows(thread_id, start_row, end_row):
-        print(f"thread {thread_id} - processing rows {start} to {end}.")
+        print(f"THREAD {thread_id} -> processando linhas {start} até {end}.")
         for y in range(start_row, end_row):
             for x in range(width):
                 r, g, b = image_array[y][x]
                 gray = (int(r) + int(g) + int(b)) // 3
                 img[y][x] = [gray, gray, gray]
-        print(f"thread {thread_id} - finished")
+        print(f"THREAD {thread_id} - terminou.")
 
     thread_range = height // num_threads
-    print("\nrows per thread:", thread_range)
+    print(f"\nnumero de threads: {num_threads}")
+    print("linhas por thread:", thread_range)
     threads = []
 
     for i in range(num_threads):
@@ -32,10 +33,10 @@ def grayscale(image_array, num_threads=4):
     return img
 
 if __name__ == "__main__":
-    n = input("nome da imagem para transfomar (ou nenhuma pra usar imagem pre-definida):")
+    n = input("nome da imagem para transfomar (ou nenhuma pra usar imagem pre-definida): ")
     if not n:
         img = Image.open('image.jpg') # input de test
-        print("imagem selecionada: image.jpg")
+        print("\nimagem selecionada: image.jpg")
     else:
         img = Image.open(n)
         print(f"imagem selecionada: {n}")
