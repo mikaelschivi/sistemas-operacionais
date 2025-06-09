@@ -1,6 +1,7 @@
 from process import Process
 from round_robin import round_robin
 from lottery import lottery
+from priority import prioridade
 
 def parse_file(filename):
     with open(filename, "r") as f:
@@ -27,7 +28,7 @@ if __name__ == "__main__":
     if algo == "alternanciaCircular":
         round_robin(process_list, quantum)
     if algo == "prioridade":
-        ...
+        prioridade(process_list, quantum)
     if algo == "loteria":
         lottery(process_list, quantum)
     if algo == "CFS":
