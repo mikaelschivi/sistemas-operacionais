@@ -15,7 +15,6 @@ class Process:
         self.priority = int(priority)
         self.state = state.NEW
 
-
         self.remaining_time = self.execution_time
         self.wait_time = 0
         self.completion_time = 0
