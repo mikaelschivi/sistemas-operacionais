@@ -3,12 +3,12 @@ import time
 import random
 
 # Capacidade do buffer
-BUFFER_SIZE = 5
+tamanho_buffer = 5
 buffer = []
 
 # Semáforos
-empty_slots = threading.Semaphore(BUFFER_SIZE)
-full_slots = threading.Semaphore(0)
+slots_vazios = threading.Semaphore(tamanho_buffer)
+itens_disp = threading.Semaphore(0)
 
 # Mutex para exclusão mútua
 mutex = threading.Lock()
@@ -17,27 +17,27 @@ mutex = threading.Lock()
 def produtor(id):
     while True:
         item = random.randint(1, 100)
-        empty_slots.acquire()
+        slots_vazios.acquire()
         mutex.acquire()                # Exclusao mútua para acessar o buffer
 
         buffer.append(item)      # Insere o item no buffer
         print(f"Produtor {id} produziu: {item} | Buffer: {buffer}")
 
         mutex.release()        # Libera o acesso ao buffer
-        full_slots.release()           # Incrementa o contador de itens disponíveis
+        itens_disp.release()           # Incrementa o contador de itens disponíveis
         time.sleep(random.random())
 
 #consumidor responsavel por cinsumir a informação
 def consumidor(id):
     while True:
-        full_slots.acquire()        # Espera por itens no buffer
+        itens_disp.acquire()        # Espera por itens no buffer
         mutex.acquire()                # Exclusão mútua para acessar o buffer
 
         item = buffer.pop(0)
         print(f"Consumidor {id} consumiu: {item} | Buffer: {buffer}")
 
         mutex.release()
-        empty_slots.release()      # Incrementa o contador de espaços disponíveis
+        slots_vazios.release()      # Incrementa o contador de espaços disponíveis
         time.sleep(random.random())    # Simula tempo de consumo
 
 #Criação de threads para produtores e consumidores
