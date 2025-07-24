@@ -1,4 +1,3 @@
-import time
 from helper import Simulation
 from memory import MemoryManager
 from scheduler import Scheduler
