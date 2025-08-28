@@ -1,0 +1,26 @@
+Entrada e Saída (E/S) é uma parte fundamental para a operação de sistemas computacionais. Uma das atribuições do sistema operacional (SO) é abstrair e gerenciar o uso dos dispositivos de E/S por parte dos processos. Neste trabalho você deverá estender o código do seu escalonador (pode ser considerando apenas o algoritmo de alternância circular) para incorporar um gerenciador de E/S. A partir de agora, durante a execução de um processo, este pode solicitar a realização de operações de E/S de um dos dispositivos presentes no sistema.
+
+Para este trabalho será fornecido um arquivo de entrada com o seguinte formato.
+
+algoritmoDeEscalonamento|fraçãoDeCPU|políticaMemória|tamanhoMemória|tamanhoPáginasMolduras|percentualAlocação|numDispositivosES
+idDispositivo|numUsosSimultaneos|tempoOperação
+...
+tempoCriação|PID|tempoDeExecução|prioridade (ou bilhetes)|qtdeMemoria|sequênciaAcessoPaginasProcesso|chanceRequisitarES
+...
+ 
+onde:
+- numDispositivosES representa a quantidade de dispositivos de E/S que o sistema possui
+- idDispositivo é o identificador do dispositivo de E/S
+- numUsosSimultaneos representa a quatidade de processos que podem fazer uso daquele dispositivo de forma simultânea
+- tempoOperação indica quanto tempo o dispositivo demora para executar uma operação de E/S
+- chanceRequisitarES informa a chance que o processo tem de requisitar uma operação de E/S durante a sua fração de CPU
+ 
+*o arquivo pode conter informações sobre múltiplos dispositivos, um em cada linha
+**o arquivo contém informações sobre múltiplos processos, um em cada linha
+***Demais atributos conforme especificado em etapas anteriores do trabalho
+
+A cada vez que for trocar o processo em execução na CPU, o seu programa deverá mostrar o estado dos processos. Isto é, indicar o processo que está em execução, o(s) processo(s) em estado pronto e o(s) processo(s) bloqueados. Para todos deve ser informado o tempo de CPU restante para sua conclusão. Para os processos em estado bloqueado, também deverá ser informado o dispositivo que está sendo utilizado/aguardado. Além disso, o seu programa deverá mostrar a lista dos dispositivos existentes, o seu estado e os processos que estão fazendo uso ou esperando para fazer uso.
+
+Toda vez que um processo for escolhido para ir para a CPU, você deverá determinar, baseado na probabilidade informada, se ele irá solicitar uma operação de E/S naquele ciclo. Caso o processo solicite uma operação de E/S, você também deverá determinar (aleatoriamente) qual dispositivo será solicitado para uso e, em qual momento da fatia isto ocorrerá. Observe que os dispositivos possuem um limite de processos que podem utilizá-los por vez. Caso o processo escolha utilizar um dispositivo que já está em uso por outro processo, este deverá entrar em uma "fila de espera" do dispositivo. Enquanto o processo está realizando uma operação de E/S ou aguardando para começar sua operação de E/S, ele não poderá ser escalonado para a CPU. Nota-se, porém, que havendo outros processos em estado "pronto", estes devem prosseguir sua execução normalmente de acordo com a política de escalonamento.
+
+Ao final da execução, o seu algoritmo deverá mostrar quanto tempo um processo demorou para ser executado, isto é, desde o momento em que foi criado até o momento em que foi concluído. Também deve informar o tempo em que esteve em pronto e o tempo em que esteve em estado bloqueado.
