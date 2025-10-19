@@ -129,7 +129,7 @@ def main():
                         os_instance.file_system.mv(src_list, dest_list)
                         
                 case "ln":
-                    if len(args) != 2:
+                    if len(args) >= 2:
                         print("uso: ln <caminho_alvo> <nome_do_link>")
                     else:
                         target_path_str = args[1]                            
