@@ -34,5 +34,5 @@ class Block:
         text += str(self.content)
         if not self.is_full():
             # Preenche com '0's o espaço restante
-            text += '"' + '0' * (int(self.get_free_space()) - 1)
+            text += '"' + '0' * (self.content.ljust(self.size_limit, '0'))
         return text

@@ -1,5 +1,4 @@
 from __future__ import annotations
-from colorama import Fore, Style
 from datetime import datetime
 
 from disk import Disk
