@@ -148,6 +148,9 @@ def main():
                         else:
                             print(f"stat: não foi possível obter status de '{args[0]}': Arquivo ou diretório não encontrado")
                 
+                case "clear":
+                    print("\n"*120)
+                
                 case "echo":
                     try:
                         operator_index = -1
@@ -170,11 +173,12 @@ def main():
                         is_overwrite = (operator == ">")
                         
                         os_instance.file_system.write_to_file(path_list, content, overwrite=is_overwrite)
+
                         
                     except Exception as e:
                         print(f"echo: Erro ao processar comando: {e}")
                         print('uso: echo "conteudo" > arquivo ou echo "conteudo" >> arquivo')
-
+                    
                 case _:
                     print(f"Comando não encontrado: {command}")
 

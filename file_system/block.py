@@ -1,9 +1,12 @@
 class Block:
-    def __init__(self, disk_ref):
+    def __init__(self, disk_ref, is_load=False):
+        self.id = None
         self.content = ''
         self.disk_ref = disk_ref
         self.size_limit = self.disk_ref.block_size_kb * 1024
-        self.disk_ref.add_block(self) # add a si mesmo ao bitmap do disco
+        
+        if not is_load:
+            self.disk_ref.add_block(self) # add a si mesmo ao bitmap do disco
 
     def __str__(self) -> str:
         return self.content
@@ -30,9 +33,7 @@ class Block:
 
     def serialize(self) -> str:
         # Serializa o conteúdo do bloco para uma string de tamanho fixo
-        text = ''
-        text += str(self.content)
-        if not self.is_full():
-            # Preenche com '0's o espaço restante
-            text += '"' + '0' * (self.content.ljust(self.size_limit, '0'))
+        text = self.content
+        text += '"'
+        text = text.ljust(self.size_limit, '0')
         return text

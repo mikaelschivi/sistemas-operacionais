@@ -21,11 +21,13 @@ class Disk:
         self.inode_timestamp_len = inode_timestamp_len
         self.inode_size_field_len = inode_size_field_len
 
+        
         # Bitmaps
+        self.block_capacity = self.inode_capacity = self._calculate_capacity()
         self.block_bitmap = OrderedDict()
         self.inode_bitmap = OrderedDict()
-
-        self.block_capacity = self.inode_capacity = self._calculate_capacity()
+        self.all_inodes = [None] * self.inode_capacity
+        self.all_blocks = [None] * self.block_capacity
         
     def _calculate_capacity(self) -> int:
         # Esta função calcula o número máximo de inodes e blocos
@@ -40,24 +42,30 @@ class Disk:
         return capacity
     
     def add_block(self, block) -> bool:
-        # Adiciona um bloco ao bitmap (se houver espaço)
-        if len(self.block_bitmap) < self.block_capacity:
-            if block not in self.block_bitmap:
+        # Adiciona um bloco ao bitmap (se houver espaço) - primeiro slot livre
+        for i in range(self.block_capacity):
+            if self.all_blocks[i] is None:
+                 self.all_blocks[i] = block
+                 block.id = i
                  self.block_bitmap[block] = 1
                  return True
         return False
 
     def add_inode(self, inode) -> bool:
-        # add inode no bitmap
-        if len(self.inode_bitmap) < self.inode_capacity:
-            if inode not in self.inode_bitmap:
-                self.inode_bitmap[inode] = 1
+        # add inode no bitmap - primeiro slot livre 
+        for i in range(self.inode_capacity):
+            if self.all_inodes[i] is None:
+                self.all_inodes[i] = inode
+                inode.id = i
+                self.inode_bitmap[inode] = 1 # Adiciona ao bitmap de ativos
                 return True
-        return False
+        return False # Disco cheio
     
     def free_block(self, block):
         if block in self.block_bitmap:
             del self.block_bitmap[block]
+            if block.id is not None and self.all_blocks[block.id] == block:
+                self.all_blocks[block.id] = None
             return True
         return False
     
@@ -67,6 +75,8 @@ class Disk:
             if inode.type != 'd':
                 inode.clear_content() # Libera os blocos de dados associados
             del self.inode_bitmap[inode]
+            if inode.id is not None and self.all_inodes[inode.id] == inode:
+                self.all_inodes[inode.id] = None
             return True
         return False
     
@@ -75,34 +85,28 @@ class Disk:
         print(f"Salvando estado do disco em {self.disk_filename}...")
         
         # mapeia os bits
-        block_bits = ''.join(str(v) for v in self.block_bitmap.values()).ljust(self.block_capacity, '0')
-        inode_bits = ''.join(str(v) for v in self.inode_bitmap.values()).ljust(self.inode_capacity, '0')
-        
+        block_bits = ''.join(['1' if b is not None else '0' for b in self.all_blocks])
+        inode_bits = ''.join(['1' if i is not None else '0' for i in self.all_inodes])
+
+        # itera sobre as listas all - quando fiz pelo bitmap dava corrompendo
         with open(self.disk_filename, 'w') as f:
             f.write(block_bits)
             f.write(inode_bits)
 
-        # write data block
-        with open(self.disk_filename, 'a') as f:
-            for block in self.block_bitmap.keys():
-                f.write(block.serialize())
-            
-            # normaliza os blocos vazio (zera tudo)
-            empty_block_count = self.block_capacity - len(self.block_bitmap)
             empty_block_text = '0' * (self.block_size_kb * 1024)
-            for _ in range(empty_block_count):
-                f.write(empty_block_text)
+            for block in self.all_blocks:
+                if block:
+                    f.write(block.serialize())
+                else:
+                    f.write(empty_block_text)
 
-        # write inodes no disk
-        with open(self.disk_filename, 'a') as f:
-            for inode in self.inode_bitmap.keys():
-                f.write(inode.serialize())
-            
-            # normaliza inodes vazios
-            empty_inode_count = self.inode_capacity - len(self.inode_bitmap)
             empty_inode_text = '0' * (self.inode_size_kb * 1024)
-            for _ in range(empty_inode_count):
-                f.write(empty_inode_text)
+            for inode in self.all_inodes:
+                if inode:
+                    f.write(inode.serialize())
+                else:
+                    f.write(empty_inode_text)
+                    
         print("Salvo com sucesso.")
 
        
@@ -115,18 +119,19 @@ class Disk:
         # get bits
         block_bits = [int(text[i]) for i in range(self.block_capacity)]
         inode_bits = [int(text[self.block_capacity + i]) for i in range(self.inode_capacity)]
+        print("bits ok")
         
         text_offset = self.block_capacity + self.inode_capacity
 
         # constroi o bloco do 0
-        all_blocks = []
         block_size_bytes = self.block_size_kb * 1024
         for i in range(self.block_capacity):
             block_text = text[text_offset : text_offset + block_size_bytes]
             text_offset += block_size_bytes
             
-            new_block = Block(self) 
-            
+            new_block = Block(self, is_load=True) 
+            new_block.id = i
+
             # fim do bloco
             content_end_marker = block_text.rfind('"0')
             if content_end_marker != -1:
@@ -138,10 +143,9 @@ class Disk:
             elif not block_text.startswith('0'):
                 new_block.write(block_text)
                 
-            all_blocks.append(new_block)
+            self.all_blocks[i] = new_block
 
         # constroi inodes
-        all_inodes = []
         inode_size_bytes = self.inode_size_kb * 1024
         parent_index_map = {} # (idx_inode, idx_pai)
         
@@ -152,8 +156,8 @@ class Disk:
             inode_text = text[text_offset : text_offset + inode_size_bytes]
             text_offset += inode_size_bytes
             
-            if inode_text == '0' * inode_size_bytes:
-                all_inodes.append(None)
+            if not inode_bits[i]:
+                self.all_inodes[i] = None
                 continue
 
             # get metadata
@@ -161,18 +165,21 @@ class Disk:
             size = int(inode_text[self.inode_name_max_len : self.inode_name_max_len + self.inode_size_field_len])
             ctime_str = inode_text[270:282]
             mtime_str = inode_text[282:294]
+            print(f"metadata ok for inode {i}")
             
             parent_index_len = len(str(self.inode_capacity))
             parent_index = int(inode_text[294 : 294 + parent_index_len])
+            print(f"parent ok for inode {i}")
             
             type = inode_text[-1]
             if type not in ['a', 'd', 'l']: # Ignora inodes inválidos
-                all_inodes.append(None)
+                self.all_inodes[i] = None
                 continue
 
             if i == 0: name = '/' # root inode
             
-            new_inode = Inode(name, loading_user, None, self, type)
+            new_inode = Inode(name, loading_user, None, self, type, is_load=True)
+            new_inode.id = i
             new_inode.size = size
             new_inode.creation_date = datetime.strptime(ctime_str, '%d%m%Y%H%M')
             new_inode.modification_date = datetime.strptime(mtime_str, '%d%m%Y%H%M')
@@ -188,26 +195,32 @@ class Disk:
                     b_idx_str = block_pointers_str[j*block_index_len : (j+1)*block_index_len]
                     b_idx = int(b_idx_str)
                     if b_idx > 0 or (b_idx == 0 and len(new_inode.block_pointers) > 0):
-                        if b_idx < len(all_blocks):
-                            new_inode.block_pointers.append(all_blocks[b_idx])
+                        if b_idx < len(self.all_blocks):
+                            new_inode.block_pointers.append(self.all_blocks[b_idx])
 
-            all_inodes.append(new_inode)
+            self.all_inodes[i] = new_inode
             parent_index_map[i] = parent_index
 
-        for i, inode in enumerate(all_inodes):
+        for i, inode in enumerate(self.all_inodes):
             if inode is None: continue
             
             parent_idx = parent_index_map.get(i)
             # link inode to parent
-            if parent_idx is not None and parent_idx < len(all_inodes) and all_inodes[parent_idx] is not None:
+            if parent_idx is not None and parent_idx < len(self.all_inodes) and self.all_inodes[parent_idx] is not None:
                 if i != parent_idx: # root aponta p root
-                    parent_inode = all_inodes[parent_idx]
+                    parent_inode = self.all_inodes[parent_idx]
                     if parent_inode:
                         inode.parent_inode = parent_inode
                         parent_inode.add_child_inode(inode)
 
         # filtra só os que estão ativos
-        self.block_bitmap = OrderedDict((all_blocks[i], 1) for i, bit in enumerate(block_bits) if bit == 1 and i < len(all_blocks) and all_blocks[i])
-        self.inode_bitmap = OrderedDict((all_inodes[i], 1) for i, bit in enumerate(inode_bits) if bit == 1 and i < len(all_inodes) and all_inodes[i])
+        self.block_bitmap = OrderedDict(
+            (self.all_blocks[i], 1) for i, bit in enumerate(block_bits) 
+            if bit == 1 and i < len(self.all_blocks) and self.all_blocks[i]
+        )
+        self.inode_bitmap = OrderedDict(
+            (self.all_inodes[i], 1) for i, bit in enumerate(inode_bits) 
+            if bit == 1 and i < len(self.all_inodes) and self.all_inodes[i]
+        )
 
         print("Disco carregado com sucesso.")

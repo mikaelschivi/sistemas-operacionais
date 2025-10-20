@@ -3,8 +3,9 @@ from block import Block
 
 class Inode:
     def __init__(self, name: str, creator, parent_inode, 
-                 disk_ref, type: str = 'a'):
+                 disk_ref, type: str = 'a', is_load=False):
         
+        self.id = None
         self.name = name
         self.creator = creator
         self.owner = creator
@@ -29,7 +30,8 @@ class Inode:
         else:
             raise ValueError(f"Tipo de inode inválido: {type}")
 
-        self.disk_ref.add_inode(self) # se coloca no bitmap
+        if not is_load:
+            self.disk_ref.add_inode(self)
         
         # quantos blocos este inode pode apontar
         inode_size_bytes = self.disk_ref.inode_size_kb * 1024
@@ -38,7 +40,6 @@ class Inode:
         # tamanho aproximado ok
         metadata_size = 300 
         self.block_pointer_limit = (inode_size_bytes - metadata_size) // pointer_size_bytes
-
 
     def __str__(self) -> str:
         # Retorna o caminho absoluto do inode
@@ -205,27 +206,25 @@ class Inode:
         parent_index_str = ''
         parent_index_len = len(str(self.disk_ref.inode_capacity))
         if self.parent_inode is None:
-            parent_index_str = '0' * parent_index_len
+            # O pai da raiz (None) deve ser seu próprio ID (0)
+            parent_index = self.id if self.id is not None else 0
         else:
             # get parent id in disk
-            parent_list = list(self.disk_ref.inode_bitmap.keys())
-            try:
-                parent_index = parent_list.index(self.parent_inode)
-                parent_index_str = str(parent_index).zfill(parent_index_len)
-            except ValueError:
-                 parent_index_str = '0' * parent_index_len # talvez nao aconteça, mas isso rola quando nao encontra o pai
+            parent_index = self.parent_inode.id
+        
+        # zfill -> completa com 0 a esquerda da string
+        parent_index_str = str(parent_index).zfill(parent_index_len)
         text += parent_index_str
         
         # pointers
         blocks_str = ''
         block_index_len = len(str(self.disk_ref.block_capacity))
-        block_list = list(self.disk_ref.block_bitmap.keys())
         
         if self.block_pointers is not None:
             for block in self.block_pointers:
                 try:
-                    block_index = block_list.index(block)
-                    blocks_str += str(block_index).zfill(block_index_len)
+                    if block.id is not None:
+                        blocks_str += str(block.id).zfill(block_index_len)
                 except ValueError:
                     pass # bloco nao tá no bitmap?
             
