@@ -1,16 +1,6 @@
 from operating_system import OperatingSystem
 import shlex
-import os
 import random
-
-DISK_FILENAME = "harddisk.txt"
-DISK_TOTAL_SIZE_MB = 256
-BLOCK_SIZE_KB = 4
-INODE_SIZE_KB = 1
-
-INODE_NAME_MAX_LEN = 260
-INODE_TIMESTAMP_LEN = 12  # Formato DDMMYYYYHHMM
-INODE_SIZE_FIELD_LEN = 10
 
 def fun_and_giggles():
   return random.choice([
@@ -27,20 +17,7 @@ def fun_and_giggles():
   ])
 
 def main():
-    print(f'Disk size (mb): {DISK_TOTAL_SIZE_MB}')
-    print(f'Block size (kb): {BLOCK_SIZE_KB}')
-    print(f'Inode size (kb): {INODE_SIZE_KB}')
-    print()
-
-    os_instance = OperatingSystem(
-        disk_filename=DISK_FILENAME,
-        disk_total_size_mb=DISK_TOTAL_SIZE_MB,
-        block_size_kb=BLOCK_SIZE_KB,
-        inode_size_kb=INODE_SIZE_KB,
-        inode_name_max_len=INODE_NAME_MAX_LEN,
-        inode_timestamp_len=INODE_TIMESTAMP_LEN,
-        inode_size_field_len=INODE_SIZE_FIELD_LEN
-    )
+    os_instance = OperatingSystem()
     
     while os_instance.current_user is None:
         name =  input("\nUsuário não logado! Por favor digite seu nome: ")
@@ -51,7 +28,8 @@ def main():
     while True:
         try:
             cwd_path = str(os_instance.file_system.current_directory)
-            prompt = (f"{os_instance.current_user.username}@{fun_and_giggles()} "
+            machine = fun_and_giggles()
+            prompt = (f"{os_instance.current_user.username}@{machine}{machine}{machine} "
                       f"~{cwd_path}> ")
             
             command_line = input(prompt)
@@ -129,11 +107,11 @@ def main():
                         os_instance.file_system.mv(src_list, dest_list)
                         
                 case "ln":
-                    if len(args) >= 2:
+                    if len(args) != 2:
                         print("uso: ln <caminho_alvo> <nome_do_link>")
                     else:
-                        target_path_str = args[1]                            
-                        link_path_list = os_instance.parse_path(args[2])
+                        target_path_str = args[0]                            
+                        link_path_list = os_instance.parse_path(args[1])
                         os_instance.file_system.create_symlink(target_path_str, link_path_list)
 
                 case "stat":

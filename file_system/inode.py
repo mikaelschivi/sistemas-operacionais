@@ -1,245 +1,256 @@
+# inode.py
 from datetime import datetime
+from typing import Optional, List
 from block import Block
 
+INODE_NAME_MAX_LEN = 32
+INODE_SIZE_FIELD_LEN = 10
+INODE_TIMESTAMP_LEN = 12
+PARENT_INDEX_LEN = 6
+TYPE_LEN = 1
+
 class Inode:
-    def __init__(self, name: str, creator, parent_inode, 
-                 disk_ref, type: str = 'a', is_load=False):
-        
-        self.id = None
-        self.name = name
+    def __init__(self, name: str, creator, parent_inode, disk_ref, type: str = 'a', is_load: bool = False):
+        self.id: Optional[int] = None
+        self.name: str = name or ''
         self.creator = creator
         self.owner = creator
-        self.size = 0
+        self.size: int = 0
         self.creation_date = datetime.now()
         self.modification_date = datetime.now()
         self.parent_inode = parent_inode
         self.disk_ref = disk_ref
-        self.type = type # 'a' (arquivo), 'd' (diretório), 'l' (link)
+        self.type: str = type  # 'a', 'd', 'l'
 
-        # dir
+        # pointers e estrutura de diretório
+        self.block_pointers: List[Block] = []
         if self.type == 'd':
-            self.block_pointers = None 
-            self.inode_pointers = []
+            self.inode_pointers: List[Inode] = []
             self.inode_count = 0
-
-        # file / symlink
-        elif self.type == 'a' or self.type == 'l':
-            self.block_pointers = []
-            self.inode_pointers = None 
-            self.inode_count = None
         else:
-            raise ValueError(f"Tipo de inode inválido: {type}")
+            self.inode_pointers = None
+            self.inode_count = None
+
+        # calcula quantos ponteiros cabem na serialização
+        ptr_chars = len(str(self.disk_ref.block_capacity))
+        metadata_fixed = INODE_NAME_MAX_LEN + INODE_SIZE_FIELD_LEN + INODE_TIMESTAMP_LEN*2 + PARENT_INDEX_LEN + TYPE_LEN
+        self.block_pointer_limit = (self.disk_ref.inode_size_b - metadata_fixed) // ptr_chars
 
         if not is_load:
+            # registra no disco (Disk.add_inode)
             self.disk_ref.add_inode(self)
-        
-        # quantos blocos este inode pode apontar
-        inode_size_bytes = self.disk_ref.inode_size_kb * 1024
-        pointer_size_bytes = len(str(self.disk_ref.block_capacity))
-        
-        # tamanho aproximado ok
-        metadata_size = 300 
-        self.block_pointer_limit = (inode_size_bytes - metadata_size) // pointer_size_bytes
 
     def __str__(self) -> str:
-        # Retorna o caminho absoluto do inode
-        path = []
-        current_inode = self
-        while current_inode.parent_inode is not None:
-            path.append(current_inode.name)
-            current_inode = current_inode.parent_inode
-        path.append(current_inode.name)
-        path.reverse()
-        full_path = '/'.join(path)
-        if full_path.startswith('//'): # Corrige caso a raiz seja '/'
-            full_path = full_path[1:]
-        return full_path
+        parts = []
+        cur = self
+        while cur is not None:
+            parts.append(cur.name or '/')
+            cur = cur.parent_inode
+        parts.reverse()
+        path = '/'.join(p.strip('/') for p in parts if p is not None)
+        if not path.startswith('/'):
+            path = '/' + path
+        return path
+    
+    def print_metadata(self):
+        type_map = {'a': 'arquivo', 'd': 'diretório', 'l': 'link simbólico'}
+        
+        print(f"name: '{self.name}'")
+        print(f"path: {self}")
+        print(f"size: {self.size} Bytes")
+        if self.type == 'l':
+            print(f"link to: {self.read_content()}")
 
-    def print_metadata(self):        
-        if self.type == 'd':
-            type_str = "Dir"
-        elif self.type == 'l':
-            type_str = "Symlink"
-        else:
-            type_str = "File"
+        print(f"type: {type_map.get(self.type, 'unknown')}")
+        print(f"inode: {self.id}")
+        
+        parent_id = self.parent_inode.id if self.parent_inode else 'N/A (raiz)'
+        print(f"parent inode id: {parent_id}")
 
-        print(f"--- Metadados do Inode: {self.name} ---")
-        print(f"  Caminho: {str(self)}")
-        print(f"  Tipo: {type_str}")
-        print(f"  Criador: {self.creator.username if self.creator else 'N/A'}")
-        print(f"  Dono: {self.owner.username if self.owner else 'N/A'}")
-        print(f"  Tamanho (bytes): {self.size}")
-        print(f"  Criado em: {self.creation_date.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"  Modificado em: {self.modification_date.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"owner: {self.owner}")
+        print(f"creator: {self.creator}")
+        print(f"created at: {self.creation_date.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"modified at: {self.modification_date.strftime('%Y-%m-%d %H:%M:%S')}")
 
-        # type especific
-        if self.type == 'd':
-            print(f"  Contagem de Filhos: {self.inode_count}")
-        elif self.type == 'l':
-            print(f"  Alvo do Link: {self.read_content()}")
-        else: # 'a'
-            print(f"  Blocos Alocados: {len(self.block_pointers)}")
+        block_ids = [b.id for b in self.block_pointers]
+        print(f"blocks -> ({len(block_ids)}): {block_ids if block_ids else 'None'}")
+
+    # ---------------- children (dir) ----------------
+    def add_child_inode(self, inode):
+        if self.type != 'd':
+            raise Exception("Não é diretório")
+        # evita duplicata
+        if inode not in self.inode_pointers:
+            self.inode_pointers.append(inode)
+            self.inode_count = len(self.inode_pointers)
+            self.modification_date = datetime.now()
+
+    def remove_child_inode(self, inode):
+        if self.type != 'd':
+            raise Exception("Não é diretório")
+        if inode in self.inode_pointers:
+            self.inode_pointers.remove(inode)
+            self.inode_count = len(self.inode_pointers)
+            self.modification_date = datetime.now()
 
     def get_child_by_name(self, name: str):
         if self.type != 'd':
             return None
-        for inode in self.inode_pointers:
-            if inode.name == name:
-                if inode is self: continue
-                return inode
+        for c in self.inode_pointers:
+            if c.name == name:
+                return c
         return None
 
     def list_children(self):
         if self.type == 'd':
-            return self.inode_pointers
-        else:
-            return []
-
-    def add_child_inode(self, inode):
-        if self.type != 'd':
-            raise Exception(f'{self} não é um diretório.')
-        self.inode_pointers.append(inode)
-        self.inode_count += 1
-        self.modification_date = datetime.now()
-
-    def remove_child_inode(self, inode):
-        if self.type != 'd':
-            raise Exception(f'{self} não é um diretório.')
-        self.inode_pointers.remove(inode)
-        self.inode_count -= 1
-        self.modification_date = datetime.now()
+            return list(self.inode_pointers)
+        return []
 
     def is_empty(self) -> bool:
-        # Verifica se um diretório está vazio
-        if self.type == 'd':
-            return self.inode_count == 0
-        raise Exception(f'{self} não é um diretório.')
+        if self.type != 'd':
+            raise Exception("Não é diretório")
+        # considera vazio se não tem filhos (.) e (..) não representados aqui
+        return self.inode_count == 0
 
-    def move(self, new_parent_inode, new_name: str):
-        # Move o inode (this) para um novo pai e/ou novo nome
-        if self.parent_inode:
-            self.parent_inode.remove_child_inode(self)
-        self.parent_inode = new_parent_inode
-        self.name = new_name
-        self.parent_inode.add_child_inode(self)
-        self.modification_date = datetime.now()
+    # ---------------- content (arquivo/symlink) ----------------
+    def can_add_new_block(self) -> bool:
+        return len(self.block_pointers) < self.block_pointer_limit
 
     def write_content(self, content: str, overwrite: bool = False):
         if self.type == 'd':
-            raise Exception(f'{self} é um diretório.')
-        
+            raise Exception("Não pode escrever em diretório")
         if overwrite:
-            self.clear_content() # Libera blocos antigos
-
+            self.clear_content()
+        remaining = content.encode('utf-8')
+        # garante pelo menos um bloco
         if len(self.block_pointers) == 0:
-            if self.can_add_new_block():
-                self.block_pointers.append(Block(self.disk_ref))
-            else:
-                raise Exception(f'{self} não pode adicionar novos blocos.')
-        
-        current_block: Block = self.block_pointers[-1]
-        
-        # recursivo pra lidar com conteúdo > bloco
-        if current_block.can_fit(content):
-            current_block.write(content)
-        else:
-            space_left = current_block.get_free_space()
-
-            content_part1 = content[:space_left]
-            content_part2 = content[space_left:]
-            
-            current_block.write(content_part1)
-            
-            if self.can_add_new_block():
-                self.block_pointers.append(Block(self.disk_ref))
-                self.write_content(content_part2, overwrite=False) 
-            else:
-                raise Exception(f'{self} ficou sem ponteiros de bloco.')
-
-        self.size = len(self.read_content()) # Atualiza o tamanho
+            if not self.can_add_new_block():
+                raise Exception("Sem ponteiros disponíveis")
+            self.block_pointers.append(Block(self.disk_ref))
+        while remaining:
+            blk = self.block_pointers[-1]
+            free = blk.get_free_space()
+            part = remaining[:free]
+            blk.write_bytes(part)
+            remaining = remaining[len(part):]
+            if remaining:
+                if self.can_add_new_block():
+                    self.block_pointers.append(Block(self.disk_ref))
+                else:
+                    raise Exception("Excedeu ponteiros do inode")
+        # atualiza size e mtime
+        self.size = sum(len(b.content) for b in self.block_pointers)
         self.modification_date = datetime.now()
 
-    def can_add_new_block(self) -> bool:
-        return len(self.block_pointers) < self.block_pointer_limit
-        
     def read_content(self) -> str:
         if self.type == 'd':
-            raise Exception(f'{self} é um diretório.')
-        
-        content = ''
-        for block in self.block_pointers:
-            content += block.content
-        return content
-        
+            raise Exception("Diretório não pode ser lido como arquivo")
+        data = b''.join(blk.read_bytes() for blk in self.block_pointers)
+        return data.decode('utf-8', errors='ignore')
+
     def clear_content(self):
-        # Limpa o *conteúdo* e libera os blocos, mas não deleta o inode
         if self.type == 'd':
             self.inode_pointers = []
             self.inode_count = 0
         else:
-            for block in self.block_pointers:
-                self.disk_ref.free_block(block) # Libera cada bloco no disco
+            for blk in list(self.block_pointers):
+                try:
+                    self.disk_ref.free_block(blk)
+                except Exception:
+                    pass
             self.block_pointers = []
             self.size = 0
         self.modification_date = datetime.now()
 
-    # Serializa os metadados do inode para uma string de tamanho fixo
-    def serialize(self) -> str:        
-        text = ''
+    def move(self, new_parent, new_name: str):
+        if self.parent_inode:
+            self.parent_inode.remove_child_inode(self)
         
-        name = str(self.name)
-        name = name[name.rfind('/')+1:]
-        if len(name) < self.disk_ref.inode_name_max_len:
-            name += '"' # char de fim de nome
-            if len(name) < self.disk_ref.inode_name_max_len:
-                name = name.ljust(self.disk_ref.inode_name_max_len, '0')
-        text += name
-        
-        
-        size = str(self.size).zfill(self.disk_ref.inode_size_field_len)
-        text += size
-        
-        text += self.creation_date.strftime('%d%m%Y%H%M')        
-        text += self.modification_date.strftime('%d%m%Y%H%M')
-        
-        # parent
-        parent_index_str = ''
-        parent_index_len = len(str(self.disk_ref.inode_capacity))
-        if self.parent_inode is None:
-            # O pai da raiz (None) deve ser seu próprio ID (0)
-            parent_index = self.id if self.id is not None else 0
-        else:
-            # get parent id in disk
-            parent_index = self.parent_inode.id
-        
-        # zfill -> completa com 0 a esquerda da string
-        parent_index_str = str(parent_index).zfill(parent_index_len)
-        text += parent_index_str
-        
-        # pointers
-        blocks_str = ''
-        block_index_len = len(str(self.disk_ref.block_capacity))
-        
-        if self.block_pointers is not None:
-            for block in self.block_pointers:
-                try:
-                    if block.id is not None:
-                        blocks_str += str(block.id).zfill(block_index_len)
-                except ValueError:
-                    pass # bloco nao tá no bitmap?
-            
-        # preenche o restante dos ponteiros com '0'
-        blocks_str = blocks_str.ljust(self.block_pointer_limit * block_index_len, '0')
-        text += blocks_str
-        
-        total_inode_size = self.disk_ref.inode_size_kb * 1024
-        if len(text) < total_inode_size:
-            text += '"' # char de fim de dados
-            text = text.ljust(total_inode_size, '0')
+        self.parent_inode = new_parent
+        new_parent.add_child_inode(self)
+        self.name = new_name
+        self.modification_date = datetime.now()
 
-            # salva o tipo no nome do inode no último char
-            # nota -> "metadata" é sempre em binário
-            # ex. nome_diretorio"metadata"000d, nome_arquivo"metadata"000a, nome_link"metadata"000l
-            text = text[:-1] + self.type
-            # print("debug", text)
-        return text
+    # ---------------- serialização ----------------
+    def serialize(self) -> bytes:
+        # name
+        name_b = (self.name.encode('utf-8')[:INODE_NAME_MAX_LEN]).ljust(INODE_NAME_MAX_LEN, b'\x00')
+        # size
+        size_b = str(int(self.size)).zfill(INODE_SIZE_FIELD_LEN).encode('ascii')
+        # times
+        ctime_s = self.creation_date.strftime('%d%m%Y%H%M').encode('ascii')
+        mtime_s = self.modification_date.strftime('%d%m%Y%H%M').encode('ascii')
+        # parent id
+        parent_id = 0 if (self.parent_inode is None or self.parent_inode.id is None) else self.parent_inode.id
+        parent_b = str(parent_id).zfill(PARENT_INDEX_LEN).encode('ascii')
+        # pointers
+        ptr_chars = len(str(self.disk_ref.block_capacity))
+        ptrs = b''
+        for blk in self.block_pointers:
+            bid = 0 if blk is None or blk.id is None else blk.id
+            ptrs += str(bid).zfill(ptr_chars).encode('ascii')
+        total_ptr_len = self.block_pointer_limit * ptr_chars
+        ptrs = ptrs.ljust(total_ptr_len, b'0')
+        # type
+        type_b = (self.type or 'a').encode('ascii')
+        payload = name_b + size_b + ctime_s + mtime_s + parent_b + ptrs + type_b
+        if len(payload) > self.disk_ref.inode_size_b:
+            payload = payload[:self.disk_ref.inode_size_b]
+        return payload.ljust(self.disk_ref.inode_size_b, b'\x00')
+
+    @classmethod
+    def load_from_bytes(cls, data: bytes, disk_ref, is_load: bool = False):
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError("load_from_bytes espera bytes")
+        name = data[0:INODE_NAME_MAX_LEN].split(b'\x00', 1)[0].decode('utf-8', errors='ignore')
+        size_s = data[INODE_NAME_MAX_LEN:INODE_NAME_MAX_LEN + INODE_SIZE_FIELD_LEN].decode('ascii', errors='ignore').strip()
+        try:
+            size = int(size_s) if size_s else 0
+        except:
+            size = 0
+        off = INODE_NAME_MAX_LEN + INODE_SIZE_FIELD_LEN
+        ctime_s = data[off:off + INODE_TIMESTAMP_LEN].decode('ascii', errors='ignore'); off += INODE_TIMESTAMP_LEN
+        mtime_s = data[off:off + INODE_TIMESTAMP_LEN].decode('ascii', errors='ignore'); off += INODE_TIMESTAMP_LEN
+        parent_s = data[off:off + PARENT_INDEX_LEN].decode('ascii', errors='ignore'); off += PARENT_INDEX_LEN
+
+        ptr_chars = len(str(disk_ref.block_capacity))
+        ptrs_count = (disk_ref.inode_size_b - (INODE_NAME_MAX_LEN + INODE_SIZE_FIELD_LEN + INODE_TIMESTAMP_LEN*2 + PARENT_INDEX_LEN + TYPE_LEN)) // ptr_chars
+        ptrs = []
+        for i in range(ptrs_count):
+            slice_s = data[off + i*ptr_chars: off + (i+1)*ptr_chars].decode('ascii', errors='ignore').strip()
+            if slice_s and slice_s != '0':
+                try:
+                    ptrs.append(int(slice_s))
+                except:
+                    pass
+        off += ptrs_count * ptr_chars
+        type_s = data[off:off + TYPE_LEN].decode('ascii', errors='ignore') or 'a'
+
+        inode = cls(name=name or '', creator=None, parent_inode=None, disk_ref=disk_ref, type=type_s, is_load=True)
+        inode.size = size
+        try:
+            inode.creation_date = datetime.strptime(ctime_s, '%d%m%Y%H%M')
+        except:
+            inode.creation_date = datetime.now()
+        try:
+            inode.modification_date = datetime.strptime(mtime_s, '%d%m%Y%H%M')
+        except:
+            inode.modification_date = datetime.now()
+
+        # preencher blocos com referências existentes (serão None se bloco não carregado)
+        inode.block_pointers = []
+        for bid in ptrs:
+            if 0 <= bid < disk_ref.block_capacity and disk_ref.all_blocks[bid] is not None:
+                inode.block_pointers.append(disk_ref.all_blocks[bid])
+
+        # guarda parent temporário para resolução pós-load
+        try:
+            inode._temp_parent_id = int(parent_s)
+        except:
+            inode._temp_parent_id = None
+
+        if inode.type == 'd':
+            inode.inode_pointers = []
+            inode.inode_count = 0
+
+        return inode

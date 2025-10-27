@@ -1,39 +1,67 @@
+# block.py
+from typing import Optional
+
 class Block:
-    def __init__(self, disk_ref, is_load=False):
-        self.id = None
-        self.content = ''
+    """
+    Block armazena bytes. Interfaces:
+      - write(content_str) : escreve string/texto (encoda em utf-8)
+      - write_bytes(bytes)  : escreve bytes diretamente
+      - read() -> str
+      - read_bytes() -> bytes
+      - serialize() -> bytes (tamanho exactly disk.block_size_b)
+      - can_fit / get_free_space em bytes
+    """
+    def __init__(self, disk_ref, is_load: bool = False):
+        self.id: Optional[int] = None
+        self.content: bytes = b''
         self.disk_ref = disk_ref
-        self.size_limit = self.disk_ref.block_size_kb * 1024
-        
+        self.size_limit = self.disk_ref.block_size_b
+
         if not is_load:
-            self.disk_ref.add_block(self) # add a si mesmo ao bitmap do disco
+            # add self to disk -> Disk.add_block retorna id
+            self.disk_ref.add_block(self)
 
     def __str__(self) -> str:
+        try:
+            return self.content.decode('utf-8', errors='ignore')
+        except Exception:
+            return repr(self.content)
+
+    # bytes interface
+    def write_bytes(self, data: bytes):
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError("write_bytes espera bytes")
+        if len(data) > self.get_free_space():
+            raise Exception("Conteúdo maior que espaço livre no bloco")
+        self.content += data
+
+    def read_bytes(self) -> bytes:
         return self.content
 
-    def is_full(self) -> bool:
-        return len(self.content.encode('utf-8')) == self.size_limit
-    
-    def write(self, content_to_write: str):
-        if self.is_full():
-            raise Exception('Bloco está cheio')
-        if not self.can_fit(content_to_write):
-            raise Exception('Tamanho do conteúdo é maior que o limite do bloco')
-        self.content += content_to_write
-    
-    def get_free_space(self) -> int:
-        # size in bytes
-        return self.size_limit - len(self.content.encode('utf-8'))
+    # text interface (util)
+    def write(self, text: str):
+        if not isinstance(text, str):
+            raise TypeError("write espera str")
+        self.write_bytes(text.encode('utf-8'))
 
-    def can_fit(self, content_to_fit: str) -> bool:
-        return len(content_to_fit.encode('utf-8')) <= self.get_free_space()
+    def read(self) -> str:
+        return self.read_bytes().decode('utf-8', errors='ignore')
+
+    def get_free_space(self) -> int:
+        return self.size_limit - len(self.content)
+
+    def can_fit(self, text: str) -> bool:
+        return len(text.encode('utf-8')) <= self.get_free_space()
 
     def clear(self):
-        self.content = ''
+        self.content = b''
 
-    def serialize(self) -> str:
-        # Serializa o conteúdo do bloco para uma string de tamanho fixo
-        text = self.content
-        text += '"'
-        text = text.ljust(self.size_limit, '0')
-        return text
+    def serialize(self) -> bytes:
+        """Retorna bytes exatamente do tamanho do bloco (padding zeros)."""
+        if not isinstance(self.content, (bytes, bytearray)):
+            data = str(self.content).encode('utf-8')
+        else:
+            data = self.content
+        if len(data) > self.size_limit:
+            raise ValueError("Block content maior que block size")
+        return data.ljust(self.size_limit, b'\x00')

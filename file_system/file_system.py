@@ -176,7 +176,7 @@ class FileSystem:
         if target_file:
             # atualiza data de mod
             target_file.modification_date = datetime.now()
-            self.disk.inode_bitmap[target_file] = 1 # marca node como ativo
+            # self.disk.inode_bitmap[target_file] = 1 # marca node como ativo
         else:
             print(f"Criando..")
             self._create_inode(path, self.os_ref.current_user, 'a')
