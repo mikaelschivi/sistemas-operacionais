@@ -44,13 +44,15 @@ class Inode:
         parts = []
         cur = self
         while cur is not None:
-            parts.append(cur.name or '/')
+            # A raiz tem nome vazio, mas seu path é '/'
+            if cur.parent_inode is None:
+                parts.append('')
+                break
+            parts.append(cur.name)
             cur = cur.parent_inode
         parts.reverse()
-        path = '/'.join(p.strip('/') for p in parts if p is not None)
-        if not path.startswith('/'):
-            path = '/' + path
-        return path
+        # Junta as partes, garantindo que comece com '/' e não tenha barras duplas
+        return '/' + '/'.join(filter(None, parts))
     
     def print_metadata(self):
         type_map = {'a': 'arquivo', 'd': 'diretório', 'l': 'link simbólico'}
@@ -75,7 +77,6 @@ class Inode:
         block_ids = [b.id for b in self.block_pointers]
         print(f"blocks -> ({len(block_ids)}): {block_ids if block_ids else 'None'}")
 
-    # ---------------- children (dir) ----------------
     def add_child_inode(self, inode):
         if self.type != 'd':
             raise Exception("Não é diretório")
@@ -112,7 +113,6 @@ class Inode:
         # considera vazio se não tem filhos (.) e (..) não representados aqui
         return self.inode_count == 0
 
-    # ---------------- content (arquivo/symlink) ----------------
     def can_add_new_block(self) -> bool:
         return len(self.block_pointers) < self.block_pointer_limit
 
@@ -171,7 +171,7 @@ class Inode:
         self.name = new_name
         self.modification_date = datetime.now()
 
-    # ---------------- serialização ----------------
+
     def serialize(self) -> bytes:
         # name
         name_b = (self.name.encode('utf-8')[:INODE_NAME_MAX_LEN]).ljust(INODE_NAME_MAX_LEN, b'\x00')
@@ -181,7 +181,8 @@ class Inode:
         ctime_s = self.creation_date.strftime('%d%m%Y%H%M').encode('ascii')
         mtime_s = self.modification_date.strftime('%d%m%Y%H%M').encode('ascii')
         # parent id
-        parent_id = 0 if (self.parent_inode is None or self.parent_inode.id is None) else self.parent_inode.id
+        # Usamos -1 para indicar 'sem pai' (raiz), para não confundir com o inode 0.
+        parent_id = -1 if self.parent_inode is None else self.parent_inode.id
         parent_b = str(parent_id).zfill(PARENT_INDEX_LEN).encode('ascii')
         # pointers
         ptr_chars = len(str(self.disk_ref.block_capacity))
@@ -196,13 +197,15 @@ class Inode:
         payload = name_b + size_b + ctime_s + mtime_s + parent_b + ptrs + type_b
         if len(payload) > self.disk_ref.inode_size_b:
             payload = payload[:self.disk_ref.inode_size_b]
+        # print(f"[DEBUG-SERIALIZE] Inode '{self.name}' (ID: {self.id}) -> {payload.hex()}")
         return payload.ljust(self.disk_ref.inode_size_b, b'\x00')
 
     @classmethod
     def load_from_bytes(cls, data: bytes, disk_ref, is_load: bool = False):
         if not isinstance(data, (bytes, bytearray)):
             raise TypeError("load_from_bytes espera bytes")
-        name = data[0:INODE_NAME_MAX_LEN].split(b'\x00', 1)[0].decode('utf-8', errors='ignore')
+        name = data[0:INODE_NAME_MAX_LEN].split(b'\x00', 1)[0].decode('utf-8', errors='ignore').strip()
+        # print(f"[DEBUG-LOAD] Carregando inode: '{name}' a partir de bytes: {data.hex()}")
         size_s = data[INODE_NAME_MAX_LEN:INODE_NAME_MAX_LEN + INODE_SIZE_FIELD_LEN].decode('ascii', errors='ignore').strip()
         try:
             size = int(size_s) if size_s else 0
@@ -245,9 +248,11 @@ class Inode:
 
         # guarda parent temporário para resolução pós-load
         try:
-            inode._temp_parent_id = int(parent_s)
+            pid = int(parent_s)
+            # Se o ID do pai for -1, significa que é a raiz e não tem pai.
+            inode._temp_parent_id = None if pid == -1 else pid
         except:
-            inode._temp_parent_id = None
+            inode._temp_parent_id = None # Fallback
 
         if inode.type == 'd':
             inode.inode_pointers = []

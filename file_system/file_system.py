@@ -11,13 +11,15 @@ class FileSystem:
         self.os_ref = os_ref
         self.root = None
         
-        # Tenta pegar a raiz (inode 0) do disco
-        if len(self.disk.inode_bitmap) > 0:
-            self.root = list(self.disk.inode_bitmap.keys())[0]
+        # Tenta carregar a raiz (inode 0) do disco, se existir.
+        if self.disk.all_inodes and self.disk.all_inodes[0] is not None:
+            self.root = self.disk.all_inodes[0]
+            print("[FS] Raiz carregada do disco.")
         else:
-            # Cria a raiz se não existir
+            # Se não houver raiz, cria uma nova. O nome da raiz é vazio.
             root_user = self.os_ref.current_user or User("root", "")
-            self.root = Inode('/', root_user, None, self.disk, type='d')
+            self.root = Inode('', root_user, None, self.disk, type='d')
+            print("[FS] Nova raiz criada.")
             
         self.current_directory = self.root
 
@@ -47,7 +49,7 @@ class FileSystem:
         parent_dir.add_child_inode(new_inode)
         return new_inode
 
-    def _resolve_path(self, path: list[str], start_node = None) -> Inode:        
+    def _resolve_path(self, path: list[str], start_node = None, is_create=False) -> Inode:        
         if not path:
             return self.current_directory
 
@@ -75,7 +77,8 @@ class FileSystem:
             child = current_node.get_child_by_name(part)
             
             if child is None:
-                print(f"Erro: '{part}' não encontrado em '{current_node}'.")
+                if is_create is False:
+                    print(f"Erro: '{part}' não encontrado em '{current_node}'.")
                 return None
             
             # Lida com Links Simbólicos
@@ -172,7 +175,7 @@ class FileSystem:
         print(f"Arquivo '{target_file.name}' removido.")
         
     def touch(self, path: list[str]):
-        target_file = self._resolve_path(path)
+        target_file = self._resolve_path(path, is_create=True)
         if target_file:
             # atualiza data de mod
             target_file.modification_date = datetime.now()
