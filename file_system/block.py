@@ -1,18 +1,8 @@
 # block.py
-from typing import Optional
 
 class Block:
-    """
-    Block armazena bytes. Interfaces:
-      - write(content_str) : escreve string/texto (encoda em utf-8)
-      - write_bytes(bytes)  : escreve bytes diretamente
-      - read() -> str
-      - read_bytes() -> bytes
-      - serialize() -> bytes (tamanho exactly disk.block_size_b)
-      - can_fit / get_free_space em bytes
-    """
     def __init__(self, disk_ref, is_load: bool = False):
-        self.id: Optional[int] = None
+        self.id: None
         self.content: bytes = b''
         self.disk_ref = disk_ref
         self.size_limit = self.disk_ref.block_size_b

@@ -7,7 +7,7 @@ from inode import Inode
 DISK_FILENAME_DEFAULT = "disco"
 DISK_SIZE_MB = 64
 BLOCK_SIZE_B = 512
-INODE_SIZE_B = 128
+INODE_SIZE_B = 256
 
 class Disk:
     def __init__(self,
@@ -36,17 +36,20 @@ class Disk:
         # Calcula capacidades
         self.block_capacity = data_blocks_size // self.block_size_b
         
-        # Os dois bitmaps são de 4 bytes cada.
-        
+        self.inode_bitmap_size = metadata_size // self.inode_size_b
+        print(f"[disk] inode bitmap size (KB): {self.inode_bitmap_size // 1024}")
+        self.block_bitmap_size = (self.total_bytes - metadata_size) // self.block_size_b
+        print(f"[disk] block bitmap size (KB): {self.block_bitmap_size // 1024}")
+
         # O espaço de metadata é dividido entre tabela de inodes e os dois bitmaps
-        inode_table_size = metadata_size - 64 # 64 bits = 8 bytes, são os 2 blocos de 4 bytes de Bitmap
+        inode_table_size = metadata_size - (self.inode_bitmap_size + self.block_bitmap_size)
         self.inode_capacity = inode_table_size // self.inode_size_b
         print(f"[disk] inode capacity: {self.inode_capacity}")
 
         # Define os offsets
-        self.inode_bitmap_offset = 0 # 0 - 31 bit
-        self.block_bitmap_offset = 32 # 32 - 63 bit
-        self.inode_table_offset = 64
+        self.inode_bitmap_offset = 0
+        self.block_bitmap_offset = self.inode_bitmap_size
+        self.inode_table_offset = self.inode_bitmap_size + self.block_bitmap_size
         self.block_data_offset = metadata_size
         print(f"[disk] block capacity: {self.block_capacity}")
 

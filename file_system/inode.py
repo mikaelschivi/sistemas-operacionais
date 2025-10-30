@@ -4,6 +4,8 @@ from typing import Optional, List
 from block import Block
 
 INODE_NAME_MAX_LEN = 32
+INODE_OWNER_LEN = 16
+INODE_CREATOR_LEN = 16
 INODE_SIZE_FIELD_LEN = 10
 INODE_TIMESTAMP_LEN = 12
 PARENT_INDEX_LEN = 6
@@ -13,8 +15,8 @@ class Inode:
     def __init__(self, name: str, creator, parent_inode, disk_ref, type: str = 'a', is_load: bool = False):
         self.id: Optional[int] = None
         self.name: str = name or ''
-        self.creator = creator
-        self.owner = creator
+        self.creator = str(creator)
+        self.owner = str(creator)
         self.size: int = 0
         self.creation_date = datetime.now()
         self.modification_date = datetime.now()
@@ -33,8 +35,11 @@ class Inode:
 
         # calcula quantos ponteiros cabem na serialização
         ptr_chars = len(str(self.disk_ref.block_capacity))
-        metadata_fixed = INODE_NAME_MAX_LEN + INODE_SIZE_FIELD_LEN + INODE_TIMESTAMP_LEN*2 + PARENT_INDEX_LEN + TYPE_LEN
-        self.block_pointer_limit = (self.disk_ref.inode_size_b - metadata_fixed) // ptr_chars
+        metadata_fixed = (INODE_NAME_MAX_LEN + INODE_SIZE_FIELD_LEN + 
+                          INODE_TIMESTAMP_LEN*2 + PARENT_INDEX_LEN +
+                          INODE_OWNER_LEN + INODE_CREATOR_LEN)
+        space_for_pointers = self.disk_ref.inode_size_b - metadata_fixed - TYPE_LEN
+        self.block_pointer_limit = space_for_pointers // ptr_chars
 
         if not is_load:
             # registra no disco (Disk.add_inode)
@@ -171,7 +176,6 @@ class Inode:
         self.name = new_name
         self.modification_date = datetime.now()
 
-
     def serialize(self) -> bytes:
         # name
         name_b = (self.name.encode('utf-8')[:INODE_NAME_MAX_LEN]).ljust(INODE_NAME_MAX_LEN, b'\x00')
@@ -181,9 +185,15 @@ class Inode:
         ctime_s = self.creation_date.strftime('%d%m%Y%H%M').encode('ascii')
         mtime_s = self.modification_date.strftime('%d%m%Y%H%M').encode('ascii')
         # parent id
-        # Usamos -1 para indicar 'sem pai' (raiz), para não confundir com o inode 0.
         parent_id = -1 if self.parent_inode is None else self.parent_inode.id
         parent_b = str(parent_id).zfill(PARENT_INDEX_LEN).encode('ascii')
+        # owner
+        owner_str = self.owner or ''
+        owner_b = (owner_str.encode('utf-8')[:INODE_OWNER_LEN]).ljust(INODE_OWNER_LEN, b'\x00')
+        # creator
+        creator_str = self.creator or ''
+        creator_b = (creator_str.encode('utf-8')[:INODE_CREATOR_LEN]).ljust(INODE_CREATOR_LEN, b'\x00')
+        
         # pointers
         ptr_chars = len(str(self.disk_ref.block_capacity))
         ptrs = b''
@@ -192,32 +202,52 @@ class Inode:
             ptrs += str(bid).zfill(ptr_chars).encode('ascii')
         total_ptr_len = self.block_pointer_limit * ptr_chars
         ptrs = ptrs.ljust(total_ptr_len, b'0')
+        
         # type
         type_b = (self.type or 'a').encode('ascii')
-        payload = name_b + size_b + ctime_s + mtime_s + parent_b + ptrs + type_b
+    
+        # Updated payload order
+        payload = name_b + size_b + ctime_s + mtime_s + parent_b + owner_b + creator_b + ptrs + type_b
+        
         if len(payload) > self.disk_ref.inode_size_b:
             payload = payload[:self.disk_ref.inode_size_b]
-        # print(f"[DEBUG-SERIALIZE] Inode '{self.name}' (ID: {self.id}) -> {payload.hex()}")
+        
         return payload.ljust(self.disk_ref.inode_size_b, b'\x00')
 
     @classmethod
     def load_from_bytes(cls, data: bytes, disk_ref, is_load: bool = False):
         if not isinstance(data, (bytes, bytearray)):
             raise TypeError("load_from_bytes espera bytes")
+
+        # name
         name = data[0:INODE_NAME_MAX_LEN].split(b'\x00', 1)[0].decode('utf-8', errors='ignore').strip()
-        # print(f"[DEBUG-LOAD] Carregando inode: '{name}' a partir de bytes: {data.hex()}")
+        # size
         size_s = data[INODE_NAME_MAX_LEN:INODE_NAME_MAX_LEN + INODE_SIZE_FIELD_LEN].decode('ascii', errors='ignore').strip()
         try:
             size = int(size_s) if size_s else 0
         except:
             size = 0
         off = INODE_NAME_MAX_LEN + INODE_SIZE_FIELD_LEN
+        # times
         ctime_s = data[off:off + INODE_TIMESTAMP_LEN].decode('ascii', errors='ignore'); off += INODE_TIMESTAMP_LEN
         mtime_s = data[off:off + INODE_TIMESTAMP_LEN].decode('ascii', errors='ignore'); off += INODE_TIMESTAMP_LEN
+        # parent
         parent_s = data[off:off + PARENT_INDEX_LEN].decode('ascii', errors='ignore'); off += PARENT_INDEX_LEN
-
+        # owner
+        owner = data[off:off + INODE_OWNER_LEN].split(b'\x00', 1)[0].decode('utf-8', errors='ignore').strip()
+        off += INODE_OWNER_LEN
+        # creator
+        creator = data[off:off + INODE_CREATOR_LEN].split(b'\x00', 1)[0].decode('utf-8', errors='ignore').strip()
+        off += INODE_CREATOR_LEN
+        
+        # ptrs_count calc
         ptr_chars = len(str(disk_ref.block_capacity))
-        ptrs_count = (disk_ref.inode_size_b - (INODE_NAME_MAX_LEN + INODE_SIZE_FIELD_LEN + INODE_TIMESTAMP_LEN*2 + PARENT_INDEX_LEN + TYPE_LEN)) // ptr_chars
+        metadata_fixed = (INODE_NAME_MAX_LEN + INODE_SIZE_FIELD_LEN + 
+                          INODE_TIMESTAMP_LEN*2 + PARENT_INDEX_LEN +
+                          INODE_OWNER_LEN + INODE_CREATOR_LEN)
+        space_for_pointers = disk_ref.inode_size_b - metadata_fixed - TYPE_LEN
+        ptrs_count = space_for_pointers // ptr_chars 
+        
         ptrs = []
         for i in range(ptrs_count):
             slice_s = data[off + i*ptr_chars: off + (i+1)*ptr_chars].decode('ascii', errors='ignore').strip()
@@ -227,10 +257,18 @@ class Inode:
                 except:
                     pass
         off += ptrs_count * ptr_chars
+        
+        # type
         type_s = data[off:off + TYPE_LEN].decode('ascii', errors='ignore') or 'a'
 
+        # creator is passed as None, then set from loaded data
         inode = cls(name=name or '', creator=None, parent_inode=None, disk_ref=disk_ref, type=type_s, is_load=True)
         inode.size = size
+        
+        # Set loaded owner and creator
+        inode.owner = owner
+        inode.creator = creator
+
         try:
             inode.creation_date = datetime.strptime(ctime_s, '%d%m%Y%H%M')
         except:
